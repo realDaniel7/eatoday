@@ -24,17 +24,24 @@ run_static_checks() {
     "${actionlint_bin}" -color .github/workflows/*.yml
 
     test_dir="$(mktemp -d /tmp/ai-passport-host-tests.XXXXXX)"
+    # “今天吃什么”的纯逻辑测试：轮盘停止索引、用户池与 blob、App Router 分支、种子数据。
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
-        tests/test_ui_pixel_math.c main/ui_pixel_math.c \
-        -o "${test_dir}/test_ui_pixel_math"
-    "${test_dir}/test_ui_pixel_math"
+        tests/test_eat_what_wheel.c main/eat_what_wheel.c \
+        -o "${test_dir}/test_eat_what_wheel"
+    "${test_dir}/test_eat_what_wheel"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
-        tests/test_demo_navigation.c main/demo_navigation.c \
-        -o "${test_dir}/test_demo_navigation"
-    "${test_dir}/test_demo_navigation"
+        tests/test_eat_what_seed.c main/eat_what_seed.c main/eat_what_pool.c \
+        main/eat_what_text.c \
+        -o "${test_dir}/test_eat_what_seed"
+    "${test_dir}/test_eat_what_seed"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
-        tests/test_key_guard.c -o "${test_dir}/test_key_guard"
-    "${test_dir}/test_key_guard"
+        tests/test_eat_what_pool.c main/eat_what_pool.c main/eat_what_seed.c \
+        -o "${test_dir}/test_eat_what_pool"
+    "${test_dir}/test_eat_what_pool"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_eat_what_router.c main/eat_what_router.c main/eat_what_wheel.c \
+        -o "${test_dir}/test_eat_what_router"
+    "${test_dir}/test_eat_what_router"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Icomponents/bsp/src \
         tests/test_bsp_display_rounding.c components/bsp/src/bsp_display_rounding.c \
         -o "${test_dir}/test_bsp_display_rounding"
@@ -61,16 +68,8 @@ run_static_checks() {
         tests/test_bsp_audio_recovery.c components/bsp/src/bsp_es8311_sleep_check.c \
         -o "${test_dir}/test_bsp_audio_recovery"
     "${test_dir}/test_bsp_audio_recovery"
-    for demo in audio low_power ble wifi; do
-        "${CC:-cc}" -std=c11 -Wall -Wextra -Werror \
-            -ffunction-sections -fdata-sections -Itests/demo_stubs -Imain \
-            "tests/test_demo_${demo}_runtime.c" -Wl,--gc-sections \
-            -o "${test_dir}/test_demo_${demo}_runtime"
-        "${test_dir}/test_demo_${demo}_runtime"
-    done
     PYTHONDONTWRITEBYTECODE=1 python3 tests/test_battery_profile.py
-    PYTHONDONTWRITEBYTECODE=1 python3 tests/test_deep_sleep_contract.py
-    PYTHONDONTWRITEBYTECODE=1 python3 tests/test_key_wake_contract.py
+    PYTHONDONTWRITEBYTECODE=1 python3 tests/test_eat_what_font_coverage.py
     PYTHONDONTWRITEBYTECODE=1 python3 tests/test_check_repo.py
     PYTHONDONTWRITEBYTECODE=1 python3 tests/test_verify_firmware.py
     PYTHONDONTWRITEBYTECODE=1 python3 tests/test_archive_firmware.py
