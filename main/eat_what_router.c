@@ -43,8 +43,10 @@ static eat_action_t route_main(eat_key_t key, eat_key_ev_t event, bool spinning)
 }
 
 static eat_action_t route_web(eat_key_t key, eat_key_ev_t event) {
-    // 后台页只认一个手势：长按下键退出（避免误触改列表）。
-    if (key == EAT_KEY_DOWN && event == EAT_KEY_LONG) return EAT_ACT_CLOSE_WEB;
+    if (event != EAT_KEY_LONG) return EAT_ACT_NONE;
+    // 下长按：退出并保持上次画面；确定长按：复位回封面。
+    if (key == EAT_KEY_DOWN) return EAT_ACT_CLOSE_WEB;
+    if (key == EAT_KEY_OK) return EAT_ACT_RESET_COVER;
     return EAT_ACT_NONE;
 }
 

@@ -8,7 +8,7 @@
 //   主界面静止：上长按=起转  下短按=下一个  下长按=切换列表（默认池→我的1..3→默认池）
 //               确定短按=接受  确定长按=打开手机设置后台
 //   主界面旋转：上松开=减速  下短按=立即停止
-//   后台页：    下长按=退出（其余手势忽略）
+//   后台页：    下长按=退出（保持上次画面）  确定长按=回到封面
 #pragma once
 
 #include <stdbool.h>
@@ -42,6 +42,7 @@ typedef enum {
     EAT_ACT_ACCEPT,
     EAT_ACT_OPEN_WEB,
     EAT_ACT_CLOSE_WEB,
+    EAT_ACT_RESET_COVER,   // 后台页长按确定：复位到封面并退出
 } eat_action_t;
 
 typedef struct {

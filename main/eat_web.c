@@ -47,6 +47,7 @@ static esp_err_t handle_not_found(httpd_req_t *req, httpd_err_code_t error) {
 
 static esp_err_t handle_index(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     return httpd_resp_send(req, EAT_WEB_PAGE, HTTPD_RESP_USE_STRLEN);
 }
 

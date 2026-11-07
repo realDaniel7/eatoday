@@ -30,7 +30,7 @@
 #define EAT_TEXT_WEB_WIFI_FMT "WiFi %s"
 #define EAT_TEXT_WEB_PASS_FMT "密码 %s"
 #define EAT_TEXT_WEB_URL_FMT "打开 %s"
-#define EAT_TEXT_WEB_TIP "长按下键 退出"
+#define EAT_TEXT_WEB_TIP "长按确定 回封面\n长按下键 退出"
 #define EAT_TEXT_WEB_FAIL "热点启动失败"
 #define EAT_TEXT_WEB_HELP "手机连上这个热点后打开上面的地址"
 #define EAT_TEXT_WEB_STATS_FMT "已保存 %u 项 · 当前 %s"

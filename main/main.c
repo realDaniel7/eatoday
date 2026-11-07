@@ -180,6 +180,17 @@ static void close_web_page(void) {
     s_dirty_main = false;
 }
 
+// 回到封面：清掉“已开始”状态、切回默认池，再从后台页平滑退回（先画后切，不闪白）。
+static void reset_to_cover(void) {
+    s_started = false;
+    s_sets.active = -1;
+    s_sets_mirror.active = -1;
+    (void)eat_store_save_meta_only(&s_sets);
+    rebuild_view();
+    eat_wheel_randomize(&s_wheel, esp_random());
+    close_web_page();
+}
+
 static void apply_web_changes(void) {
     // 手机后台保存后：把镜像整体换成当前数据，并刷新主界面与后台页状态。
     s_sets = s_sets_mirror;
@@ -225,11 +236,14 @@ static void handle_action(eat_action_t action) {
             s_dirty_main = true;
             break;
         case EAT_ACT_OPEN_WEB:
-            s_started = true;
+            // 打开设置后台不算“开始转”：退出后应该回到封面，而不是默认池的某一条。
             open_web_page();
             break;
         case EAT_ACT_CLOSE_WEB:
             close_web_page();
+            break;
+        case EAT_ACT_RESET_COVER:
+            reset_to_cover();
             break;
         default:
             break;
@@ -289,14 +303,8 @@ static void app_task(void *arg) {
             apply_web_changes();
         }
         if (eat_web_take_reset()) {
-            // 手机上点了“回到封面”：退后台页、回默认池待机态。
-            s_started = false;
-            s_sets.active = -1;
-            s_sets_mirror.active = -1;
-            (void)eat_store_save_meta_only(&s_sets);
-            rebuild_view();
-            eat_wheel_randomize(&s_wheel, esp_random());
-            close_web_page();
+            // 手机上点了“回到封面”
+            reset_to_cover();
         }
 
         const bool was_spinning = eat_wheel_is_spinning(&s_wheel);

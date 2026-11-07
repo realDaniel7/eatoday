@@ -54,7 +54,8 @@ static void test_web_page_branches(void) {
     assert(eat_router_key(&router, EAT_KEY_UP, EAT_KEY_LONG, false) == EAT_ACT_NONE);
     assert(eat_router_key(&router, EAT_KEY_UP, EAT_KEY_RELEASE, false) == EAT_ACT_NONE);
     assert(eat_router_key(&router, EAT_KEY_OK, EAT_KEY_CLICK, false) == EAT_ACT_NONE);
-    assert(eat_router_key(&router, EAT_KEY_OK, EAT_KEY_LONG, false) == EAT_ACT_NONE);
+    // 设备上的“复位按钮”：后台页长按确定 → 回到封面。
+    assert(eat_router_key(&router, EAT_KEY_OK, EAT_KEY_LONG, false) == EAT_ACT_RESET_COVER);
     eat_router_leave_web(&router);
     assert(router.page == EAT_PAGE_MAIN);
     // 回到主界面后手势恢复。
