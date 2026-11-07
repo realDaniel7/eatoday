@@ -4,80 +4,104 @@
 
 # Eatoday: what to eat today
 
-An offline decision toy for FoloToy AI Passport: a wheel of Beijing restaurants and
-dishes, spun with the three physical buttons. No Wi-Fi, no Bluetooth, no audio, no
-paid dependencies; everything is stored in NVS.
+An offline decision toy for FoloToy AI Passport: a wheel of restaurants, your own lists,
+and a phone-side editor for them. Spun with the three physical buttons. No internet
+access, no audio, no paid dependencies; everything is stored in NVS.
 
-This application replaces the baseline hardware-test menu with its own two-screen UI.
+This application replaces the baseline hardware-test menu with its own two screens.
 
 ## Interaction contract
 
 | Context | Gesture | Result |
 | --- | --- | --- |
-| Main, idle | hold `UP` | start spinning; release slows down and stops |
+| Main, idle | hold `UP` | spin from a random entry; release slows down and stops |
 | Main, idle | short `DOWN` | step to the next entry |
-| Main, idle | hold `DOWN` | toggle wheel scope: all entries / seed pool only |
-| Main, idle | short `OK` | accept the current result (shows "that's it") |
-| Main, idle | hold `OK` | open the add page |
+| Main, idle | hold `DOWN` | cycle wheels: starter list → list 1 … list 3 → starter list, skipping empty lists |
+| Main, idle | short `OK` | accept the current result |
+| Main, idle | hold `OK` | open the phone editor (SoftAP + HTTP) |
 | Main, spinning | release `UP` | begin deceleration |
 | Main, spinning | short `DOWN` | stop immediately |
-| Add | short `UP` / `DOWN` | move the candidate cursor |
-| Add | short `OK` | select the highlighted word as category, then optionally as a suffix |
-| Add | hold `OK` | save (category only when nothing was appended) |
-| Add | hold `UP` | cancel and return |
+| Editor | hold `DOWN` | close the hotspot and return |
 
-The three buttons share one ADC ladder, so every gesture is dispatched by a single
-App Router (`main/eat_what_router.c`); pages never read buttons themselves.
+There is no on-device typing: lists are edited from a phone. Before the first spin the
+centre card shows the title plus a "hold UP to start" hint, and switching lists does not
+leave that state — the idle screen never parks on one restaurant.
 
 ## Screens
 
-- Main: dark background `#0B0F14`; title "Beijing · what to eat today" on top with the
-  battery percentage at the right; a single rounded card in the center showing the
-  current option at 44/32/24 px depending on length; "seed N · mine M" below it;
-  a scope line; a two-line key hint. User entries are prefixed with a star.
-- Add: question at the top, the typed text in the middle (6 characters maximum),
-  and three candidate rows at the bottom that scroll with the cursor.
+- Main: dark background `#0B0F14`; title and battery on top; one rounded card in the
+  centre (idle hint, or the current option at 40/28 px via the runtime font for your own
+  entries); a statistics line "starter N · list M"; a range line naming the active list;
+  a two-line key hint.
+- Editor: hotspot name, password, address and a hint; stays until `DOWN` is held.
 
-Both screens are drawn from scratch with ordinary LVGL widgets; no baseline demo
-menu, `ui_pixel_*` shell, or demo page is reused.
+Both are drawn from scratch with ordinary LVGL widgets; no baseline demo menu or
+`ui_pixel_*` shell is reused.
+
+## Phone editor
+
+`main/eat_wifi.c` starts a WPA2 SoftAP named `Eatoday-XXXX` (last MAC bytes) with the
+password `eatoday88`; `main/eat_web.c` serves:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /` | single-page editor (rename, add, delete, pick active list, save) |
+| `GET /api/state` | current lists and active index as JSON |
+| `POST /api/save` | full replace; validated, written to NVS, applied to the wheel |
+
+Device-side limits: 3 lists, 50 entries each, 10 characters per entry, 7 characters per
+list name, duplicates rejected, request body ≤ 8 KB. Wi-Fi only runs while the editor
+screen is open.
 
 ## Data
 
-- Seed pool: 30 entries across roast duck, snacks, hotpot, Sichuan, homestyle, small
-  local places, and light-decision fallbacks (`main/eat_what_seed.c`).
-- First boot writes a seed snapshot into NVS (`namespace eatwhat`, key `seed`, with
-  `seed_ver`); later boots read that snapshot, and fall back to the compiled table
-  when the blob is missing or corrupt.
-- User pool: key `user`, at most 32 names, each at most 31 UTF-8 bytes, duplicates
-  rejected. Wheel scope: key `scope`.
-- Blob layout (little endian): `u16 version | u16 count | count × char[32]`.
-- The add page has no keyboard; it offers 12 high-frequency words. Selecting one
-  saves just that word; short-pressing `OK` again appends a second word as a short
-  name (`category·suffix`).
+- Starter pool: 30 entries (`main/eat_what_seed.c`), written to NVS on first boot with
+  `seed_ver`; a missing or corrupt snapshot falls back to the compiled table.
+- Factory list: on first boot (no list metadata in NVS) list 1 is filled with 18 everyday
+  places and named "regulars" (`eat_sets_fill_defaults`). Clearing it is permanent; the
+  defaults are not re-applied once metadata exists.
+- Lists: `set_meta` (names and active index) plus `set0`…`set2` (one blob per list, at
+  most 50 × 32 bytes). Lists are independent from the starters; an empty list is skipped
+  when cycling, so the wheel is never blank.
+- Migration: a v0.1 flat `user` list is imported into list 1 on first boot of the new
+  format.
 
-## Wheel timing
+## Wheel timing and randomness
 
-Positions are integer milli-index units, speed is milli-index per millisecond, so the
-same `dt` sequence always stops on the same entry. Spin speed is 22 entries per
-second; deceleration uses a 260 ms time constant and snaps to the nearest entry below
-0.9 entries per second.
+Positions are integer milli-index units and speed is milli-index per millisecond, so a
+given `dt` sequence always stops on the same entry. Spin speed is 22 entries per second;
+deceleration uses a 260 ms time constant and snaps below 0.9 entries per second.
+`eat_wheel_randomize()` picks the starting entry from a caller-supplied random value:
+the boot entry and every spin start are randomized, so the same place does not keep
+winning.
 
 ## Fonts
 
-Chinese text uses five generated LVGL subsets (16/20/24/32/44 px) derived from Noto
-Sans SC (OFL 1.1). `tools/gen_eat_what_fonts.sh` regenerates them from the literals in
-`main/eat_what_text.h`, `main/eat_what_text.c`, and `main/eat_what_seed.c`;
-`tests/test_eat_what_font_coverage.py` fails when any displayed character is missing.
-See `assets/fonts/README.md` for the license and regeneration steps.
+Two layers:
+
+1. Bitmap subsets (16/20/24/32/44 px) for the fixed UI text and the starter names,
+   generated from the literals in `main/eat_what_text.h`, `main/eat_what_text.c`, and
+   `main/eat_what_seed.c`; the 16 px size carries a runtime fallback, so a missed
+   character degrades to the TTF instead of a box.
+2. A runtime TTF (`assets/fonts/noto-sc-gb2312.ttf`, full GB2312, 6763 characters)
+   embedded as read-only data and rasterised by LVGL's Tiny TTF, used for the fallback
+   and for everything typed on the phone. A bitmap subset of the same range would need
+   roughly 6.5 MB at 24 px, which does not fit the 8 MB flash.
+
+Both derive from Noto Sans SC under the SIL Open Font License 1.1; see
+`assets/fonts/README.md`.
 
 ## Tests
-
-Host tests run without hardware:
 
 ```bash
 ./tools/validate.sh --static
 ```
 
-They cover the stopped-index calculation and deceleration determinism, user-pool
-appends and blob round trips, the App Router branches for idle/spinning/add pages,
-seed data integrity, and font coverage.
+Covers the stopped-index calculation and randomized starts, list storage, meta round
+trips, factory defaults, empty-list skipping, the App Router branches for idle/spinning/
+editor pages, seed data integrity, and font coverage.
+
+## Unverified on device
+
+The hotspot and HTTP round trip are exercised by hand (opening the editor, joining from a
+phone, saving a list). Automated tests cover the data model and routing, not the radio.

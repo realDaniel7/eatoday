@@ -43,6 +43,15 @@ void eat_wheel_set_count(eat_wheel_t *wheel, uint16_t count) {
     }
 }
 
+void eat_wheel_randomize(eat_wheel_t *wheel, uint32_t random_value) {
+    if (wheel == NULL || wheel->count == 0) return;
+    const uint32_t index = random_value % wheel->count;
+    wheel->pos_milli = (int32_t)index * EAT_WHEEL_MILLI;
+    wheel->speed_milli = 0;
+    wheel->spinning = false;
+    wheel->decelerating = false;
+}
+
 void eat_wheel_start(eat_wheel_t *wheel) {
     if (wheel == NULL || wheel->count == 0) return;
     snap(wheel);

@@ -120,7 +120,7 @@ static void test_blob_round_trip(void) {
     assert(restored.count == 0);
 }
 
-static void test_wheel_view_scopes(void) {
+static void test_wheel_view_sets(void) {
     eat_name_list_t seed;
     eat_seed_fill_list(&seed);
     assert(seed.count == EAT_SEED_POOL_COUNT);
@@ -128,16 +128,17 @@ static void test_wheel_view_scopes(void) {
     const char *seed_ptrs[EAT_USER_MAX];
     assert(eat_name_list_pointers(&seed, seed_ptrs, EAT_USER_MAX) == seed.count);
 
-    eat_name_list_t user;
-    eat_name_list_reset(&user);
-    assert(eat_name_list_append(&user, "★火锅"));
+    eat_name_list_t extra;
+    eat_name_list_reset(&extra);
+    assert(eat_name_list_append(&extra, "★火锅"));
 
     eat_wheel_view_t view = {
         .seed_names = seed_ptrs,
         .seed_count = seed.count,
-        .user = &user,
-        .scope = EAT_SCOPE_ALL,
+        .extra = &extra,
+        .include_seed = true,
     };
+    // 叠加默认池：默认池在前，自定义条目在后。
     assert(eat_wheel_view_count(&view) == seed.count + 1);
     assert(strcmp(eat_wheel_view_name(&view, seed.count), "★火锅") == 0);
     assert(eat_wheel_view_is_user(&view, seed.count));
@@ -145,14 +146,21 @@ static void test_wheel_view_scopes(void) {
     // 越界索引按取模处理，和轮盘保持一致。
     assert(strcmp(eat_wheel_view_name(&view, seed.count + 1), seed_ptrs[0]) == 0);
 
-    view.scope = EAT_SCOPE_SEED_ONLY;
-    assert(eat_wheel_view_count(&view) == seed.count);
-    assert(!eat_wheel_view_is_user(&view, seed.count));
-    assert(strcmp(eat_wheel_view_name(&view, seed.count), seed_ptrs[0]) == 0);
+    // 不叠加默认池：只有自定义条目。
+    view.include_seed = false;
+    assert(eat_wheel_view_count(&view) == 1);
+    assert(strcmp(eat_wheel_view_name(&view, 0), "★火锅") == 0);
+    assert(eat_wheel_view_is_user(&view, 0));
 
-    // 空种子池不应崩溃。
-    eat_wheel_view_t empty = { .seed_names = NULL, .seed_count = 0, .user = &user,
-                               .scope = EAT_SCOPE_ALL };
+    // 只有默认池。
+    eat_wheel_view_t seeds_only = { .seed_names = seed_ptrs, .seed_count = seed.count,
+                                    .extra = NULL, .include_seed = true };
+    assert(eat_wheel_view_count(&seeds_only) == seed.count);
+    assert(!eat_wheel_view_is_user(&seeds_only, 5));
+
+    // 空视图不应崩溃。
+    eat_wheel_view_t empty = { .seed_names = NULL, .seed_count = 0, .extra = &extra,
+                               .include_seed = true };
     assert(eat_wheel_view_count(&empty) == 0);
     assert(eat_wheel_view_name(&empty, 0) == NULL);
     assert(!eat_wheel_view_is_user(&empty, 0));
@@ -163,7 +171,7 @@ int main(void) {
     test_utf8_helpers();
     test_compose_name();
     test_blob_round_trip();
-    test_wheel_view_scopes();
+    test_wheel_view_sets();
     printf("test_eat_what_pool: PASS\n");
     return 0;
 }

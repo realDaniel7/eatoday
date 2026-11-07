@@ -60,9 +60,9 @@ def strip_comments_and_strings(source: str) -> tuple[str, list[str]]:
     return "".join(code), literals
 
 
-def visible_characters() -> str:
+def visible_characters(paths=None) -> str:
     characters: set[str] = set()
-    for path in SOURCES:
+    for path in (SOURCES if paths is None else paths):
         _, literals = strip_comments_and_strings(path.read_text(encoding="utf-8"))
         for literal in literals:
             for character in literal:

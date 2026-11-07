@@ -1,7 +1,10 @@
 // main/eat_ui.h —— “今天吃什么”的两屏界面（全部从零绘制，不复用 demo 测试菜单外壳）。
 //
+//   主界面：标题 / 中央大字号卡片（待机时是启动画面）/ 统计行 / 范围行 / 按键提示
+//   后台页：手机设置后台的热点名、密码、地址与提示
+//
+// 机器上不再提供选词添加页：长按确定直接开热点，用手机编辑列表。
 // 所有函数都必须在 LVGL 锁内调用（应用任务持有 bsp_lvgl_lock()）。
-// 界面只负责显示，事件由 eat_what_router 决定，main.c 执行。
 #pragma once
 
 #include "eat_what_pool.h"
@@ -11,8 +14,6 @@
 #include <stdint.h>
 #include "lvgl.h"
 
-#define EAT_ADD_ROWS 3  // 添加页底部固定显示 3 行候选词
-
 typedef struct {
     lv_obj_t *main_scr;
     lv_obj_t *title_label;
@@ -21,44 +22,46 @@ typedef struct {
     lv_obj_t *name_label;
     lv_obj_t *state_label;
     lv_obj_t *stats_label;
-    lv_obj_t *scope_label;
+    lv_obj_t *range_label;
     lv_obj_t *hint_label;
 
-    lv_obj_t *add_scr;
-    lv_obj_t *add_prompt;
-    lv_obj_t *add_typed;
-    lv_obj_t *add_hint;
-    lv_obj_t *add_rows[EAT_ADD_ROWS];
-    lv_obj_t *add_markers[EAT_ADD_ROWS];
+    lv_obj_t *web_scr;
+    lv_obj_t *web_title;
+    lv_obj_t *web_lines[4];
+    lv_obj_t *web_status;
+    lv_obj_t *web_hint;
 
     lv_obj_t *toast;
     lv_obj_t *toast_label;
 } eat_ui_t;
 
 typedef struct {
-    const char *name;       // 当前选项（不含 ★ 前缀）
-    bool is_user;           // 我的条目：显示 ★
+    bool welcome;               // 开机后还没开始转：显示启动画面而不是某一家店
+    const char *name;           // 当前选项（不含 ★ 前缀）
+    bool is_user;               // 自定义条目：显示 ★，并用运行时字体
     bool spinning;
-    bool accepted;          // 刚按过确定，短暂高亮
-    size_t seed_count;
-    size_t user_count;
-    eat_scope_t scope;
-    int battery_percent;    // -1 表示不可用
+    bool accepted;              // 刚按过确定，短暂高亮
+    size_t seed_count;          // 默认池条目数
+    size_t set_count;           // 当前列表条目数
+    const char *range_name;     // 当前列表名字；NULL 表示只用默认池
+    bool any_set_filled;        // 是否已经建过任何自定义列表
+    int battery_percent;        // -1 表示不可用
 } eat_main_view_t;
+
+typedef struct {
+    const char *ssid;
+    const char *password;
+    const char *url;
+    bool ok;                    // 热点是否启动成功
+    const char *status;         // 额外状态（启动失败原因 / 已保存提示）
+} eat_web_view_t;
 
 void eat_ui_build(eat_ui_t *ui);
 void eat_ui_show_main(eat_ui_t *ui);
-void eat_ui_show_add(eat_ui_t *ui);
+void eat_ui_show_web(eat_ui_t *ui);
 
 void eat_ui_update_main(eat_ui_t *ui, const eat_main_view_t *view);
-
-// typed：已输入文字（可能为空）；hint：中间下方的提示行；
-// words/count/cursor：候选词表与当前高亮位置（窗口会自动滚动以保持 3 行可见）。
-void eat_ui_update_add(eat_ui_t *ui, const char *typed, const char *hint,
-                       const char *const *words, size_t count, size_t cursor);
+void eat_ui_update_web(eat_ui_t *ui, const eat_web_view_t *view);
 
 void eat_ui_show_toast(eat_ui_t *ui, const char *text);
 void eat_ui_hide_toast(eat_ui_t *ui);
-
-// 候选窗口起点：让 cursor 始终落在 3 行窗口内（纯逻辑，便于主机测试）。
-size_t eat_ui_window_start(size_t cursor, size_t count);

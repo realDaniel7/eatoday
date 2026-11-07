@@ -39,6 +39,11 @@ run_static_checks() {
         -o "${test_dir}/test_eat_what_pool"
     "${test_dir}/test_eat_what_pool"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_eat_sets.c main/eat_sets.c main/eat_what_pool.c main/eat_what_seed.c \
+        main/eat_what_text.c \
+        -o "${test_dir}/test_eat_sets"
+    "${test_dir}/test_eat_sets"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
         tests/test_eat_what_router.c main/eat_what_router.c main/eat_what_wheel.c \
         -o "${test_dir}/test_eat_what_router"
     "${test_dir}/test_eat_what_router"

@@ -28,6 +28,10 @@ void eat_wheel_init(eat_wheel_t *wheel, uint16_t count);
 // 切换轮盘范围后条目数变化：保持当前索引不越界，速度与旋转状态不变。
 void eat_wheel_set_count(eat_wheel_t *wheel, uint16_t count);
 
+// 把当前位置随机落到某一项（开机首次显示、起转瞬间用）。
+// 随机数由调用方给，纯逻辑里不依赖硬件 RNG，便于主机测试。
+void eat_wheel_randomize(eat_wheel_t *wheel, uint32_t random_value);
+
 // 上键长按：起转（从对齐位置开始，清掉残留减速状态）。
 void eat_wheel_start(eat_wheel_t *wheel);
 // 上键松开：进入减速；未在旋转时无副作用。

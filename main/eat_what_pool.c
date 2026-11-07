@@ -202,27 +202,31 @@ size_t eat_name_list_pointers(const eat_name_list_t *list, const char **dst, siz
 
 size_t eat_wheel_view_count(const eat_wheel_view_t *view) {
     if (view == NULL || view->seed_names == NULL) return 0;
-    const size_t user = (view->user == NULL) ? 0 : view->user->count;
-    if (view->scope == EAT_SCOPE_SEED_ONLY) return view->seed_count;
-    return view->seed_count + user;
+    size_t total = view->include_seed ? view->seed_count : 0;
+    if (view->extra != NULL) total += view->extra->count;
+    if (total == 0) total = view->seed_count;  // 空套兜底：仍然转默认池
+    return total;
 }
 
 const char *eat_wheel_view_name(const eat_wheel_view_t *view, size_t index) {
     const size_t count = eat_wheel_view_count(view);
     if (count == 0) return NULL;
-    const size_t slot = index % count;
-    if (slot < view->seed_count) return view->seed_names[slot];
-    const size_t user_index = slot - view->seed_count;
-    if (view->user == NULL || user_index >= view->user->count) return NULL;
-    return view->user->names[user_index];
+    const size_t extra_count = (view->extra == NULL) ? 0 : view->extra->count;
+    size_t slot = index % count;
+    if (view->include_seed) {
+        if (slot < view->seed_count) return view->seed_names[slot];
+        slot -= view->seed_count;
+    }
+    if (slot < extra_count) return view->extra->names[slot];
+    return view->seed_count > 0 ? view->seed_names[slot % view->seed_count] : NULL;
 }
 
 bool eat_wheel_view_is_user(const eat_wheel_view_t *view, size_t index) {
     const size_t count = eat_wheel_view_count(view);
     if (count == 0) return false;
-    if (view->scope == EAT_SCOPE_SEED_ONLY) return false;
+    const size_t extra_count = (view->extra == NULL) ? 0 : view->extra->count;
+    if (extra_count == 0) return false;
     const size_t slot = index % count;
-    if (slot < view->seed_count) return false;
-    if (view->user == NULL) return false;
-    return (slot - view->seed_count) < view->user->count;
+    if (view->include_seed && slot < view->seed_count) return false;
+    return true;
 }

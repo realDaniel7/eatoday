@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #define EAT_NAME_MAX_BYTES 32   // 6 个汉字 + 连接符 + 余量，含结尾 NUL
-#define EAT_USER_MAX 32         // 用户池上限（也是 NVS blob 的上限来源）
+#define EAT_USER_MAX 50         // 单套自定义列表上限（也是 NVS blob 的上限来源）
 #define EAT_BLOB_VERSION 1u
 #define EAT_BLOB_HEADER 4u
 #define EAT_BLOB_MAX (EAT_BLOB_HEADER + EAT_USER_MAX * EAT_NAME_MAX_BYTES)
@@ -22,20 +22,14 @@ typedef struct {
     uint16_t count;
 } eat_name_list_t;
 
-// 轮盘范围：全部（种子 + 我的）或仅种子池。状态在主界面下方一行显示。
-typedef enum {
-    EAT_SCOPE_ALL = 0,
-    EAT_SCOPE_SEED_ONLY,
-    EAT_SCOPE_COUNT
-} eat_scope_t;
-
-// 轮盘条目视图：把种子池与用户池拼成一条可按下标访问的序列。
+// 轮盘条目视图：要么只转默认池（include_seed=true, extra=NULL），
+// 要么只转某一套自定义列表（include_seed=false, extra=该套）。
 // seed_names 由应用层在启动时从 EAT_SEED_POOL（或 NVS 快照）准备好。
 typedef struct {
     const char *const *seed_names;
     size_t seed_count;
-    const eat_name_list_t *user;
-    eat_scope_t scope;
+    const eat_name_list_t *extra;   // 当前套的条目，可为 NULL
+    bool include_seed;              // true = 默认池在前，自定义条目在后
 } eat_wheel_view_t;
 
 // 把 list 中每条名称的地址写进 dst（用于构造上面的 seed_names）。返回写入条数。

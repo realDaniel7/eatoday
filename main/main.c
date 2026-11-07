@@ -1,15 +1,19 @@
 // main/main.c —— “今天吃什么”应用入口。
 //
 // 结构：按键回调只把事件塞进队列；唯一的应用任务串行地做四件事
-//   1) 走 App Router 决定动作      2) 执行动作（起转/减速/换池/保存）
+//   1) 走 App Router 决定动作      2) 执行动作（起转/减速/换列表/开关热点）
 //   3) 推进轮盘                    4) 持 LVGL 锁刷新界面
-// 轮盘与路由都不在多任务间共享，因此不需要额外互斥；界面访问一律经 bsp_lvgl_lock()。
+// 轮盘、列表与路由都不在多任务间共享；手机后台改写的是镜像副本（s_sets_mirror），
+// 由本任务在安全点整体同步，因此界面与存储不会读到半截数据。
 #include "app_fonts.h"
 #include "bsp_battery.h"
 #include "bsp_button.h"
 #include "bsp_display.h"
 #include "bsp_pins.h"
+#include "eat_sets.h"
 #include "eat_ui.h"
+#include "eat_web.h"
+#include "eat_wifi.h"
 #include "eat_what_pool.h"
 #include "eat_what_router.h"
 #include "eat_what_seed.h"
@@ -17,26 +21,24 @@
 #include "eat_what_text.h"
 #include "eat_what_wheel.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "eat_what";
 
 #define TICK_MS 20                    // 轮盘推进与按键响应的基本节拍
 #define ACCEPT_HOLD_US (900 * 1000)   // “就它了”提示保持时间
-#define TOAST_HOLD_US (1000 * 1000)   // “已加入轮盘 ★”1 秒后消失
+#define TOAST_HOLD_US (1200 * 1000)   // 手机保存后的提示时长
 #define BATTERY_PERIOD_US (30 * 1000 * 1000)
 #define INPUT_QUEUE_DEPTH 8
-#define EAT_USER_NAME_MAX_CHARS 6     // 添加页最多 6 字
-#define EAT_APP_TASK_STACK 5120
-
-// 添加页候选词表（内容在 eat_what_text.c，字体子集按同一张表生成）。
-static eat_candidates_t s_candidates;
+#define EAT_APP_TASK_STACK 6144
 
 typedef struct {
     bsp_btn_t btn;
@@ -48,19 +50,25 @@ static eat_ui_t s_ui;
 static eat_router_t s_router;
 static eat_wheel_t s_wheel;
 static eat_name_list_t s_seed_list;
-static eat_name_list_t s_user_list;
 static const char *s_seed_ptrs[EAT_USER_MAX];
 static eat_wheel_view_t s_view;
-static eat_scope_t s_scope = EAT_SCOPE_ALL;
+static eat_sets_t s_sets;
+static eat_sets_t s_sets_mirror;          // 手机后台改写的副本
 static eat_page_t s_page = EAT_PAGE_MAIN;
+
+static eat_wifi_info_t s_wifi_info;
+static bool s_web_ok;
+static volatile bool s_web_saved;
+static char s_web_status[64];
 
 static int64_t s_accept_until_us;
 static int64_t s_toast_until_us;
 static int64_t s_battery_next_us;
 static int s_battery_percent = -1;
 
+static bool s_started;          // 开机后是否已经开始转过（false 时显示启动画面）
 static bool s_dirty_main;
-static bool s_dirty_add;
+static bool s_dirty_web;
 static bool s_toast_expiring;
 
 static eat_key_t map_key(bsp_btn_t btn) {
@@ -81,107 +89,108 @@ static eat_key_ev_t map_event(bsp_btn_ev_t ev) {
 }
 
 static void rebuild_view(void) {
-    s_view.seed_names = s_seed_ptrs;
-    s_view.seed_count = s_seed_list.count;
-    s_view.user = &s_user_list;
-    s_view.scope = s_scope;
+    eat_sets_fill_view(&s_sets, s_seed_ptrs, s_seed_list.count, &s_view);
     eat_wheel_set_count(&s_wheel, (uint16_t)eat_wheel_view_count(&s_view));
 }
 
 static void render_main_locked(void) {
     const uint16_t index = eat_wheel_index(&s_wheel);
+    const eat_set_t *active = eat_sets_active(&s_sets);
     const eat_main_view_t view = {
+        .welcome = !s_started,
         .name = eat_wheel_view_name(&s_view, index),
         .is_user = eat_wheel_view_is_user(&s_view, index),
         .spinning = eat_wheel_is_spinning(&s_wheel),
         .accepted = s_accept_until_us != 0,
-        .seed_count = s_view.seed_count,
-        .user_count = s_user_list.count,
-        .scope = s_scope,
+        .seed_count = s_seed_list.count,
+        .set_count = active == NULL ? 0 : active->items.count,
+        .range_name = active == NULL ? NULL : active->name,
+        .any_set_filled = eat_sets_any_filled(&s_sets),
         .battery_percent = s_battery_percent,
     };
     eat_ui_update_main(&s_ui, &view);
 }
 
-static void render_add_locked(void) {
-    char typed[EAT_NAME_MAX_BYTES];
-    const char *category = eat_router_selected_word(&s_router);
-    const char *suffix = eat_router_suffix(&s_router);
-    eat_compose_name(typed, sizeof(typed), category, suffix);
-
-    const char *hint;
-    if (category == NULL) {
-        hint = EAT_TEXT_ADD_HINT_CHOOSE;
-    } else if (suffix != NULL) {
-        hint = EAT_TEXT_ADD_HINT_SUFFIXED;
-    } else {
-        hint = EAT_TEXT_ADD_HINT_SAVE;
-    }
-    eat_ui_update_add(&s_ui, category == NULL ? "" : typed, hint, s_candidates.words,
-                      s_candidates.count, s_router.cursor);
+static void render_web_locked(void) {
+    const eat_web_view_t view = {
+        .ssid = s_wifi_info.ssid,
+        .password = s_wifi_info.password,
+        .url = s_wifi_info.url,
+        .ok = s_web_ok,
+        .status = s_web_status,
+    };
+    eat_ui_update_web(&s_ui, &view);
 }
 
-static void toggle_scope(void) {
-    s_scope = (s_scope == EAT_SCOPE_ALL) ? EAT_SCOPE_SEED_ONLY : EAT_SCOPE_ALL;
-    (void)eat_store_save_scope(s_scope);
+static void cycle_set(void) {
+    // 空列表在设备上直接跳过；从最后一站回到默认池。
+    s_sets.active = eat_sets_next_visible(&s_sets, s_sets.active);
+    s_sets_mirror.active = s_sets.active;
+    (void)eat_store_save_meta_only(&s_sets);
     rebuild_view();
-    ESP_LOGI(TAG, "轮盘范围：%s（%u 项）", s_scope == EAT_SCOPE_ALL ? "全部" : "仅种子池",
+    const char *name = eat_sets_active_name(&s_sets);
+    ESP_LOGI(TAG, "轮盘范围：%s（%u 项）", name == NULL ? "默认池" : name,
              (unsigned)eat_wheel_view_count(&s_view));
     s_dirty_main = true;
 }
 
-static void save_user_entry(void) {
-    char composed[EAT_NAME_MAX_BYTES];
-    char trimmed[EAT_NAME_MAX_BYTES];
-    const char *category = eat_router_selected_word(&s_router);
-    const char *suffix = eat_router_suffix(&s_router);
-    const size_t length = eat_compose_name(composed, sizeof(composed), category, suffix);
-    eat_utf8_truncate(trimmed, sizeof(trimmed), composed, EAT_USER_NAME_MAX_CHARS);
-
-    bool added = false;
-    if (length > 0 && trimmed[0] != '\0') {
-        added = eat_name_list_append(&s_user_list, trimmed);
-        if (added) (void)eat_store_save_user(&s_user_list);
+static void open_web_page(void) {
+    s_web_status[0] = '\0';
+    s_web_ok = eat_wifi_start(&s_wifi_info) == ESP_OK;
+    if (s_web_ok) {
+        s_sets_mirror = s_sets;
+        if (eat_web_start(&s_sets_mirror, s_seed_list.count, NULL, NULL) != ESP_OK) {
+            s_web_ok = false;
+            (void)eat_wifi_stop();
+        }
     }
-    ESP_LOGI(TAG, "%s：%s（我的 %u 项）", added ? "已加入轮盘" : "未加入（重复或已满）", trimmed,
-             (unsigned)s_user_list.count);
+    if (!s_web_ok) {
+        snprintf(s_web_status, sizeof(s_web_status), "%s", EAT_TEXT_WEB_FAIL);
+        s_wifi_info.ssid[0] = '\0';
+        s_wifi_info.password = EAT_WIFI_PASSWORD;
+        s_wifi_info.url = EAT_WIFI_URL;
+    }
+    eat_router_enter_web(&s_router);
+    s_page = EAT_PAGE_WEB;
+    if (bsp_lvgl_lock(300)) {
+        eat_ui_show_web(&s_ui);
+        render_web_locked();
+        bsp_lvgl_unlock();
+    }
+    s_dirty_web = true;
+}
 
-    eat_router_leave_add(&s_router);
+static void close_web_page(void) {
+    (void)eat_web_stop();
+    (void)eat_wifi_stop();
+    eat_router_leave_web(&s_router);
     s_page = EAT_PAGE_MAIN;
+    if (bsp_lvgl_lock(200)) {
+        eat_ui_show_main(&s_ui);
+        bsp_lvgl_unlock();
+    }
+    s_dirty_main = true;
+}
+
+static void apply_web_changes(void) {
+    // 手机后台保存后：把镜像整体换成当前数据，并刷新主界面与后台页状态。
+    s_sets = s_sets_mirror;
     rebuild_view();
+    const eat_set_t *active = eat_sets_active(&s_sets);
+    snprintf(s_web_status, sizeof(s_web_status), EAT_TEXT_WEB_STATS_FMT,
+             (unsigned)(active == NULL ? 0 : active->items.count),
+             active == NULL ? EAT_TEXT_RANGE_DEFAULT_NAME : active->name);
     s_toast_until_us = esp_timer_get_time() + TOAST_HOLD_US;
-
-    if (bsp_lvgl_lock(200)) {
-        eat_ui_show_main(&s_ui);
-        eat_ui_show_toast(&s_ui, added ? EAT_TEXT_TOAST_ADDED : EAT_TEXT_TOAST_REPEAT);
-        bsp_lvgl_unlock();
-    }
     s_dirty_main = true;
-}
-
-static void enter_add_page(void) {
-    eat_router_enter_add(&s_router);
-    s_page = EAT_PAGE_ADD;
-    if (bsp_lvgl_lock(200)) {
-        eat_ui_show_add(&s_ui);
-        bsp_lvgl_unlock();
-    }
-    s_dirty_add = true;
-}
-
-static void leave_add_page(void) {
-    eat_router_leave_add(&s_router);
-    s_page = EAT_PAGE_MAIN;
-    if (bsp_lvgl_lock(200)) {
-        eat_ui_show_main(&s_ui);
-        bsp_lvgl_unlock();
-    }
-    s_dirty_main = true;
+    s_dirty_web = true;
 }
 
 static void handle_action(eat_action_t action) {
     switch (action) {
         case EAT_ACT_SPIN_START:
+            s_started = true;
+            // 每次起转都从随机一项出发，避免“每次都是第一家”。
+            eat_wheel_randomize(&s_wheel, esp_random());
             eat_wheel_start(&s_wheel);
             s_dirty_main = true;
             break;
@@ -194,29 +203,25 @@ static void handle_action(eat_action_t action) {
             s_dirty_main = true;
             break;
         case EAT_ACT_SELECT_NEXT:
+            s_started = true;
             eat_wheel_step(&s_wheel, 1);
             s_dirty_main = true;
             break;
         case EAT_ACT_SCOPE_TOGGLE:
-            toggle_scope();
+            // 只是换列表，不算“开始”，启动画面保持不动。
+            cycle_set();
             break;
         case EAT_ACT_ACCEPT:
+            s_started = true;
             s_accept_until_us = esp_timer_get_time() + ACCEPT_HOLD_US;
             s_dirty_main = true;
             break;
-        case EAT_ACT_OPEN_ADD:
-            enter_add_page();
+        case EAT_ACT_OPEN_WEB:
+            s_started = true;
+            open_web_page();
             break;
-        case EAT_ACT_ADD_MOVE_PREV:
-        case EAT_ACT_ADD_MOVE_NEXT:
-        case EAT_ACT_ADD_CHOOSE:
-            s_dirty_add = true;
-            break;
-        case EAT_ACT_ADD_SAVE:
-            save_user_entry();
-            break;
-        case EAT_ACT_ADD_CANCEL:
-            leave_add_page();
+        case EAT_ACT_CLOSE_WEB:
+            close_web_page();
             break;
         default:
             break;
@@ -240,22 +245,22 @@ static void poll_battery(void) {
 }
 
 static void refresh_ui(void) {
-    if (!s_dirty_main && !s_dirty_add && !s_toast_expiring) return;
+    if (!s_dirty_main && !s_dirty_web && !s_toast_expiring) return;
     if (!bsp_lvgl_lock(50)) return;
 
     if (s_toast_expiring) {
         eat_ui_hide_toast(&s_ui);
         s_toast_expiring = false;
     }
-    if (s_page == EAT_PAGE_ADD) {
-        if (s_dirty_add) render_add_locked();
+    if (s_page == EAT_PAGE_WEB) {
+        if (s_dirty_web) render_web_locked();
     } else if (s_dirty_main) {
         render_main_locked();
     }
     bsp_lvgl_unlock();
 
     s_dirty_main = false;
-    s_dirty_add = false;
+    s_dirty_web = false;
 }
 
 static void app_task(void *arg) {
@@ -270,6 +275,11 @@ static void app_task(void *arg) {
         const int64_t now = esp_timer_get_time();
         const uint32_t dt_ms = (uint32_t)((now - last_us) / 1000);
         last_us = now;
+
+        if (s_web_saved) {
+            s_web_saved = false;
+            apply_web_changes();
+        }
 
         const bool was_spinning = eat_wheel_is_spinning(&s_wheel);
         if (dt_ms > 0 && eat_wheel_tick(&s_wheel, dt_ms)) s_dirty_main = true;
@@ -297,8 +307,14 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t ev, void *user) {
     (void)xQueueSend(s_queue, &input, 0);
 }
 
+// HTTP 任务保存成功后只置标志，由应用任务在安全点同步。
+static void on_web_saved(void *context) {
+    (void)context;
+    s_web_saved = true;
+}
+
 void app_main(void) {
-    ESP_LOGI(TAG, "今天吃什么 v1 启动");
+    ESP_LOGI(TAG, "今天吃什么 v1.1 启动");
 
     if (bsp_display_init() != ESP_OK || !bsp_lvgl_init()) {
         ESP_LOGE(TAG, "显示/LVGL 初始化失败（MOSI=%d SCLK=%d CS=%d DC=%d BL=%d）", BSP_LCD_MOSI,
@@ -311,30 +327,37 @@ void app_main(void) {
     if (!battery_ok) ESP_LOGW(TAG, "电量计不可用，右上角显示 --");
 
     if (eat_store_open() != 0) {
-        ESP_LOGW(TAG, "NVS 不可用，本次运行使用编译期种子池且不保存");
+        ESP_LOGW(TAG, "NVS 不可用，本次运行使用编译期默认池且不保存");
     }
-    eat_name_list_reset(&s_user_list);
     const bool seeded = eat_store_seed_if_needed(&s_seed_list);
     if (s_seed_list.count == 0) {
         eat_seed_fill_list(&s_seed_list);  // NVS 不可用时的兜底
     }
-    if (!eat_store_load_user(&s_user_list)) {
-        eat_name_list_reset(&s_user_list);
+    const bool sets_loaded = eat_store_load_sets(&s_sets);
+    if (!sets_loaded) {
+        // 第一次启动（或旧格式不再兼容）：第 1 套预置一组出厂内容。
+        eat_sets_fill_defaults(&s_sets);
+        (void)eat_store_save_sets(&s_sets);
+        ESP_LOGI(TAG, "第 1 套已填入 %u 项出厂内容",
+                 (unsigned)s_sets.sets[0].items.count);
     }
-    eat_scope_t stored_scope = EAT_SCOPE_ALL;
-    if (eat_store_load_scope(&stored_scope)) s_scope = stored_scope;
+    if (eat_store_migrate_legacy_user(&s_sets)) {
+        ESP_LOGI(TAG, "已迁移旧版“我的”列表");
+    }
+    s_sets_mirror = s_sets;
 
     eat_name_list_pointers(&s_seed_list, s_seed_ptrs, EAT_USER_MAX);
-    s_candidates.words = EAT_CANDIDATE_WORDS;
-    s_candidates.count = EAT_CANDIDATE_COUNT;
-    eat_router_init(&s_router, &s_candidates);
+    eat_router_init(&s_router);
     eat_wheel_init(&s_wheel, 0);
     rebuild_view();
-    eat_wheel_init(&s_wheel, (uint16_t)eat_wheel_view_count(&s_view));
+    // 启动就随机落到一条，避免“封面”永远是同一家。
+    eat_wheel_randomize(&s_wheel, esp_random());
 
-    ESP_LOGI(TAG, "种子池 %u 项（本次%s写入 NVS），我的 %u 项，范围 %s",
-             (unsigned)s_seed_list.count, seeded ? "" : "未", (unsigned)s_user_list.count,
-             s_scope == EAT_SCOPE_ALL ? "全部" : "仅种子池");
+    const char *active_name = eat_sets_active_name(&s_sets);
+    ESP_LOGI(TAG, "默认池 %u 项（本次%s写入 NVS），当前范围 %s，轮盘 %u 项",
+             (unsigned)s_seed_list.count, seeded ? "" : "未",
+             active_name == NULL ? "默认池" : active_name,
+             (unsigned)eat_wheel_view_count(&s_view));
 
     s_queue = xQueueCreate(INPUT_QUEUE_DEPTH, sizeof(input_event_t));
     if (s_queue == NULL) {

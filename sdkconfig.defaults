@@ -24,9 +24,17 @@ CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_DEF_REFR_PERIOD=20
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
-# LVGL 内置 malloc 池大小(KB)。它是独立静态区、不与系统堆共享,配大了会白白占用 RAM。
-# 本 demo UI 简单,24KB 足够;若自建复杂界面出现绘制卡死/看门狗,调大此值。
-CONFIG_LV_MEM_SIZE_KILOBYTES=24
+# LVGL 内置 malloc 池（字节）。它是独立静态区、不与系统堆共享；LVGL 9.5 用
+# CONFIG_LV_MEM_SIZE（字节），旧的 CONFIG_LV_MEM_SIZE_KILOBYTES 已废弃。
+# 32KB 足够三屏界面 + 3 行候选词；设太大（默认 64KB）会挤占 Wi-Fi 需要的堆。
+CONFIG_LV_MEM_SIZE=32768
+
+# --- 运行时中文渲染 ---
+# 自定义条目由用户在手机上自由输入，静态子集必然缺字：
+# 用 Tiny TTF 在运行时栅格化内嵌的 GB2312 一级 3755 字 TTF。
+CONFIG_LV_USE_TINY_TTF=y
+# Tiny TTF 的字体缓存（KB）会占用内部 RAM，24KB 足够常用条目。
+CONFIG_LV_TINY_TTF_CACHE_GLYPH_CNT=64
 
 # --- 系统 ---
 CONFIG_FREERTOS_HZ=1000

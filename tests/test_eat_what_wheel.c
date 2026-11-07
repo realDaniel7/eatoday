@@ -121,6 +121,22 @@ static void test_count_change_keeps_index_valid(void) {
     assert(wheel.pos_milli == 5 * EAT_WHEEL_MILLI);
 }
 
+static void test_randomize_lands_on_requested_entry(void) {
+    eat_wheel_t wheel;
+    eat_wheel_init(&wheel, 12);
+    // 纯逻辑：随机数由调用方给，同一个种子必须落到同一条。
+    eat_wheel_randomize(&wheel, 0);
+    assert(eat_wheel_index(&wheel) == 0);
+    eat_wheel_randomize(&wheel, 12345);
+    assert(eat_wheel_index(&wheel) == 12345 % 12);
+    assert(wheel.pos_milli == (int32_t)(12345 % 12) * EAT_WHEEL_MILLI);
+    assert(!eat_wheel_is_spinning(&wheel));
+    // 空轮盘不崩。
+    eat_wheel_init(&wheel, 0);
+    eat_wheel_randomize(&wheel, 7);
+    assert(eat_wheel_index(&wheel) == 0);
+}
+
 static void test_empty_wheel_is_safe(void) {
     eat_wheel_t wheel;
     eat_wheel_init(&wheel, 0);
@@ -140,6 +156,7 @@ int main(void) {
     test_release_only_matters_while_spinning();
     test_manual_step_and_reset();
     test_count_change_keeps_index_valid();
+    test_randomize_lands_on_requested_entry();
     test_empty_wheel_is_safe();
     printf("test_eat_what_wheel: PASS\n");
     return 0;
