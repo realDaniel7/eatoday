@@ -159,9 +159,9 @@ void eat_ui_show_web(eat_ui_t *ui) {
 }
 
 static const lv_font_t *name_font(const eat_main_view_t *view, size_t chars) {
-    // 旋转时一律用位图字体：运行时 TTF 的栅格化跟不上每秒 22 项，
-    // 连续渲染会把字形缓存和 LVGL 内存池吃干，是之前闪退的直接原因。
-    if (view->is_user && !view->spinning) {
+    // 自定义条目一律用运行时 TTF（旋转中也一样），这样中文不会变成方块；
+    // 崩溃问题已通过“LVGL 改用系统堆 + 开热点前释放字体”解决。
+    if (view->is_user) {
         // 自定义条目来自手机输入，用运行时 TTF，避免静态子集缺字。
         const lv_font_t *runtime = eat_font_user();
         if (runtime != NULL) return runtime;
