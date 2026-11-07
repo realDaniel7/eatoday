@@ -31,6 +31,9 @@ typedef struct {
     lv_obj_t *web_status;
     lv_obj_t *web_hint;
 
+    lv_obj_t *divider;          // 标题下的细分割线
+    lv_obj_t *dots[9];          // 轮盘位置指示点
+
     lv_obj_t *toast;
     lv_obj_t *toast_label;
 } eat_ui_t;
@@ -45,6 +48,8 @@ typedef struct {
     size_t set_count;           // 当前列表条目数
     const char *range_name;     // 当前列表名字；NULL 表示只用默认池
     bool any_set_filled;        // 是否已经建过任何自定义列表
+    size_t index;               // 当前条目索引（画位置点用）
+    size_t total;               // 当前轮盘条目数
     int battery_percent;        // -1 表示不可用
 } eat_main_view_t;
 

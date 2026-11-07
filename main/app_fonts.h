@@ -27,10 +27,10 @@ const lv_font_t *eat_font_for_name(size_t chars);
 // 所以这一档必须带 fallback，否则会出现方框。
 const lv_font_t *eat_font_ui_16(void);
 
-// 自定义条目用的运行时字体。首次调用时从内嵌 TTF 创建；
-// 失败返回 NULL，调用方应回退到 eat_font_for_name()。
-const lv_font_t *eat_font_user_large(void);   // 短名字（≈40px）
-const lv_font_t *eat_font_user_medium(void);  // 长名字（≈28px）
+// 自定义条目用的运行时字体（32px，来自内嵌 TTF）。
+// 只保留一个实例：两个尺寸会各自占一份字形缓存，在这台没有 PSRAM 的机器上放不下。
+// 创建失败返回 NULL，调用方应回退到 eat_font_for_name()。
+const lv_font_t *eat_font_user(void);
 
 // 运行时字体是否可用（后台页/测试用来提示）。
 bool eat_fonts_runtime_ready(void);

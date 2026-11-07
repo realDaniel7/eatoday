@@ -22,6 +22,9 @@
 #define EAT_COLOR_MUTED     0x8095AA
 #define EAT_COLOR_DIM       0x4E6076
 #define EAT_COLOR_ACCENT    0xFFB454
+#define EAT_UI_DOTS         9
+#define EAT_DOT_SIZE        6
+#define EAT_DOT_STEP        12
 
 static lv_obj_t *make_screen(void) {
     lv_obj_t *scr = lv_obj_create(NULL);
@@ -61,6 +64,8 @@ static void build_main(eat_ui_t *ui) {
     lv_obj_set_style_text_align(ui->title_label, LV_TEXT_ALIGN_LEFT, 0);
     lv_label_set_text(ui->title_label, EAT_TEXT_TITLE);
 
+    ui->divider = make_box(ui->main_scr, 14, 38, 212, 1, EAT_COLOR_LINE, 0);
+
     ui->battery_label = make_label(ui->main_scr, eat_font_ui_16(), EAT_COLOR_DIM);
     lv_obj_set_width(ui->battery_label, 56);
     lv_obj_set_pos(ui->battery_label, 168, 12);
@@ -68,7 +73,7 @@ static void build_main(eat_ui_t *ui) {
     lv_label_set_text(ui->battery_label, EAT_TEXT_BATTERY_UNKNOWN);
 
     // 中央卡片：唯一的视觉焦点，旋转时边框点亮为强调色。
-    ui->name_card = make_box(ui->main_scr, 20, 60, 200, 152, EAT_COLOR_CARD, 18);
+    ui->name_card = make_box(ui->main_scr, 20, 54, 200, 146, EAT_COLOR_CARD, 18);
     lv_obj_set_style_border_width(ui->name_card, 2, 0);
     lv_obj_set_style_border_color(ui->name_card, lv_color_hex(EAT_COLOR_LINE), 0);
 
@@ -84,19 +89,26 @@ static void build_main(eat_ui_t *ui) {
     lv_obj_align(ui->state_label, LV_ALIGN_BOTTOM_MID, 0, -12);
     lv_label_set_text(ui->state_label, "");
 
+    // 轮盘位置点：一眼看出当前项在整个池子里的位置。
+    for (int i = 0; i < EAT_UI_DOTS; i++) {
+        const int x = 120 - (EAT_UI_DOTS * EAT_DOT_STEP) / 2 + i * EAT_DOT_STEP;
+        ui->dots[i] = make_box(ui->main_scr, x, 208, EAT_DOT_SIZE, EAT_DOT_SIZE,
+                               EAT_COLOR_LINE, EAT_DOT_SIZE / 2);
+    }
+
     ui->stats_label = make_label(ui->main_scr, eat_font_ui_16(), EAT_COLOR_MUTED);
     lv_obj_set_width(ui->stats_label, 208);
-    lv_obj_set_pos(ui->stats_label, 16, 224);
+    lv_obj_set_pos(ui->stats_label, 16, 222);
     lv_label_set_text(ui->stats_label, "");
 
     ui->range_label = make_label(ui->main_scr, eat_font_ui_16(), EAT_COLOR_ACCENT);
     lv_obj_set_width(ui->range_label, 208);
-    lv_obj_set_pos(ui->range_label, 16, 248);
+    lv_obj_set_pos(ui->range_label, 16, 246);
     lv_label_set_text(ui->range_label, "");
 
     ui->hint_label = make_label(ui->main_scr, eat_font_ui_16(), EAT_COLOR_DIM);
     lv_obj_set_width(ui->hint_label, 212);
-    lv_obj_set_pos(ui->hint_label, 14, 276);
+    lv_obj_set_pos(ui->hint_label, 14, 274);
     lv_label_set_text(ui->hint_label, EAT_TEXT_HINT_MAIN);
 }
 
@@ -159,10 +171,31 @@ void eat_ui_show_web(eat_ui_t *ui) {
 static const lv_font_t *name_font(const eat_main_view_t *view, size_t chars) {
     if (view->is_user) {
         // 自定义条目来自手机输入，用运行时 TTF，避免静态子集缺字。
-        const lv_font_t *runtime = chars <= 6 ? eat_font_user_large() : eat_font_user_medium();
+        const lv_font_t *runtime = eat_font_user();
         if (runtime != NULL) return runtime;
     }
     return eat_font_for_name(chars);
+}
+
+static void update_dots(eat_ui_t *ui, const eat_main_view_t *view) {
+    size_t active = (size_t)-1;
+    if (!view->welcome && view->total > 0) {
+        if (view->total <= EAT_UI_DOTS) {
+            active = view->index;
+        } else {
+            active = (view->index * EAT_UI_DOTS) / view->total;   // 多于 9 项按比例压缩
+        }
+        if (active >= EAT_UI_DOTS) active = EAT_UI_DOTS - 1;
+    }
+    for (int i = 0; i < EAT_UI_DOTS; i++) {
+        const bool on = ((size_t)i == active);
+        lv_obj_set_style_bg_color(ui->dots[i],
+                                  lv_color_hex(on ? EAT_COLOR_ACCENT : EAT_COLOR_LINE), 0);
+        lv_obj_set_style_width(ui->dots[i], on ? EAT_DOT_SIZE + 4 : EAT_DOT_SIZE, 0);
+        lv_obj_set_style_height(ui->dots[i], on ? EAT_DOT_SIZE + 4 : EAT_DOT_SIZE, 0);
+        lv_obj_set_style_radius(ui->dots[i], (on ? EAT_DOT_SIZE + 4 : EAT_DOT_SIZE) / 2, 0);
+        lv_obj_set_y(ui->dots[i], on ? 206 : 208);
+    }
 }
 
 void eat_ui_update_main(eat_ui_t *ui, const eat_main_view_t *view) {
@@ -175,8 +208,16 @@ void eat_ui_update_main(eat_ui_t *ui, const eat_main_view_t *view) {
         lv_label_set_text(ui->state_label,
                           view->any_set_filled ? EAT_TEXT_WELCOME_HINT
                                                : EAT_TEXT_WELCOME_HINT_NO_SET);
-        lv_label_set_text(ui->stats_label, "");
-        lv_label_set_text(ui->range_label, "");
+        // 待机时也显示当前列表，切列表才有可见反馈（封面本身仍然不换）。
+        lv_label_set_text_fmt(ui->stats_label, EAT_TEXT_STATS_FMT, (unsigned)view->seed_count,
+                              view->range_name == NULL ? EAT_TEXT_RANGE_DEFAULT_NAME
+                                                       : view->range_name,
+                              (unsigned)view->set_count);
+        if (view->range_name == NULL) {
+            lv_label_set_text(ui->range_label, EAT_TEXT_RANGE_DEFAULT);
+        } else {
+            lv_label_set_text_fmt(ui->range_label, EAT_TEXT_RANGE_SET_FMT, view->range_name);
+        }
         lv_obj_set_style_border_color(ui->name_card, lv_color_hex(EAT_COLOR_LINE), 0);
         lv_obj_set_style_bg_color(ui->name_card, lv_color_hex(EAT_COLOR_CARD), 0);
     } else {
@@ -212,6 +253,8 @@ void eat_ui_update_main(eat_ui_t *ui, const eat_main_view_t *view) {
             lv_label_set_text_fmt(ui->range_label, EAT_TEXT_RANGE_SET_FMT, view->range_name);
         }
     }
+
+    update_dots(ui, view);
 
     if (view->battery_percent < 0) {
         lv_label_set_text(ui->battery_label, EAT_TEXT_BATTERY_UNKNOWN);

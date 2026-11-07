@@ -4,6 +4,7 @@
 #include "cJSON.h"
 #include "eat_what_pool.h"
 #include "eat_what_store.h"
+#include "eat_wifi.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 
@@ -32,6 +33,15 @@ static esp_err_t send_text(httpd_req_t *req, const char *message) {
     char payload[192];
     snprintf(payload, sizeof(payload), "{\"ok\":false,\"error\":\"%s\"}", message);
     return httpd_resp_send(req, payload, HTTPD_RESP_USE_STRLEN);
+}
+
+// 手机探测联网状态时会访问各种域名/路径：一律 302 到设置页，系统便会“自动弹出”登录页。
+static esp_err_t handle_not_found(httpd_req_t *req, httpd_err_code_t error) {
+    (void)error;
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", EAT_WIFI_URL "/");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
 }
 
 static esp_err_t handle_index(httpd_req_t *req) {
@@ -188,6 +198,7 @@ esp_err_t eat_web_start(eat_sets_t *sets, size_t seed_count, eat_web_saved_cb_t 
     httpd_register_uri_handler(s_server, &index_uri);
     httpd_register_uri_handler(s_server, &state_uri);
     httpd_register_uri_handler(s_server, &save_uri);
+    httpd_register_err_handler(s_server, HTTPD_404_NOT_FOUND, handle_not_found);
 
     ESP_LOGI(TAG, "HTTP 服务已启动");
     return ESP_OK;

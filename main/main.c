@@ -10,6 +10,7 @@
 #include "bsp_button.h"
 #include "bsp_display.h"
 #include "bsp_pins.h"
+#include "eat_captive.h"
 #include "eat_sets.h"
 #include "eat_ui.h"
 #include "eat_web.h"
@@ -106,6 +107,8 @@ static void render_main_locked(void) {
         .set_count = active == NULL ? 0 : active->items.count,
         .range_name = active == NULL ? NULL : active->name,
         .any_set_filled = eat_sets_any_filled(&s_sets),
+        .index = index,
+        .total = eat_wheel_view_count(&s_view),
         .battery_percent = s_battery_percent,
     };
     eat_ui_update_main(&s_ui, &view);
@@ -142,6 +145,8 @@ static void open_web_page(void) {
         if (eat_web_start(&s_sets_mirror, s_seed_list.count, NULL, NULL) != ESP_OK) {
             s_web_ok = false;
             (void)eat_wifi_stop();
+        } else if (eat_captive_start() != ESP_OK) {
+            ESP_LOGW(TAG, "DNS 劫持启动失败，手机需手动打开地址");
         }
     }
     if (!s_web_ok) {
@@ -161,6 +166,7 @@ static void open_web_page(void) {
 }
 
 static void close_web_page(void) {
+    (void)eat_captive_stop();
     (void)eat_web_stop();
     (void)eat_wifi_stop();
     eat_router_leave_web(&s_router);

@@ -9,8 +9,7 @@ extern const uint8_t noto_sc_ttf_end[] asm("_binary_noto_sc_gb2312_ttf_end");
 
 static const char *TAG = "eat_fonts";
 
-static lv_font_t *s_user_large;
-static lv_font_t *s_user_medium;
+static lv_font_t *s_user;
 static lv_font_t s_ui16;
 static lv_font_t *s_runtime_16;
 static bool s_runtime_failed;
@@ -61,19 +60,10 @@ const lv_font_t *eat_font_ui_16(void) {
     return &app_font_16;
 }
 
-const lv_font_t *eat_font_user_large(void) {
+const lv_font_t *eat_font_user(void) {
 #if LV_USE_TINY_TTF
-    if (s_user_large == NULL && !s_runtime_failed) s_user_large = create_runtime_font(40);
-    return s_user_large;
-#else
-    return NULL;
-#endif
-}
-
-const lv_font_t *eat_font_user_medium(void) {
-#if LV_USE_TINY_TTF
-    if (s_user_medium == NULL && !s_runtime_failed) s_user_medium = create_runtime_font(28);
-    return s_user_medium;
+    if (s_user == NULL && !s_runtime_failed) s_user = create_runtime_font(32);
+    return s_user;
 #else
     return NULL;
 #endif
@@ -81,7 +71,7 @@ const lv_font_t *eat_font_user_medium(void) {
 
 bool eat_fonts_runtime_ready(void) {
 #if LV_USE_TINY_TTF
-    return eat_font_user_medium() != NULL;
+    return eat_font_user() != NULL;
 #else
     return false;
 #endif
@@ -94,13 +84,9 @@ void eat_fonts_deinit(void) {
         s_runtime_16 = NULL;
         s_ui16_ready = false;
     }
-    if (s_user_large != NULL) {
-        lv_tiny_ttf_destroy(s_user_large);
-        s_user_large = NULL;
-    }
-    if (s_user_medium != NULL) {
-        lv_tiny_ttf_destroy(s_user_medium);
-        s_user_medium = NULL;
+    if (s_user != NULL) {
+        lv_tiny_ttf_destroy(s_user);
+        s_user = NULL;
     }
 #endif
 }

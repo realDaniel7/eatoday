@@ -10,6 +10,7 @@ idf_component_register(
          "eat_what_wheel.c"
          "eat_sets.c"
          "eat_wifi.c"
+         "eat_captive.c"
          "eat_web.c"
          "eat_web_page.c"
     INCLUDE_DIRS "."
