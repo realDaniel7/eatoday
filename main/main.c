@@ -107,8 +107,6 @@ static void render_main_locked(void) {
         .set_count = active == NULL ? 0 : active->items.count,
         .range_name = active == NULL ? NULL : active->name,
         .any_set_filled = eat_sets_any_filled(&s_sets),
-        .index = index,
-        .total = eat_wheel_view_count(&s_view),
         .battery_percent = s_battery_percent,
     };
     eat_ui_update_main(&s_ui, &view);
@@ -138,6 +136,9 @@ static void cycle_set(void) {
 }
 
 static void open_web_page(void) {
+    // 开热点前先把运行时字体释放掉：Wi-Fi 协议栈和字形缓存都很吃堆，
+    // 两者同时驻留在这台没有 PSRAM 的机器上会不够用。
+    eat_fonts_deinit();
     s_web_status[0] = '\0';
     s_web_ok = eat_wifi_start(&s_wifi_info) == ESP_OK;
     if (s_web_ok) {
@@ -358,6 +359,7 @@ void app_main(void) {
     rebuild_view();
     // 启动就随机落到一条，避免“封面”永远是同一家。
     eat_wheel_randomize(&s_wheel, esp_random());
+
 
     const char *active_name = eat_sets_active_name(&s_sets);
     ESP_LOGI(TAG, "默认池 %u 项（本次%s写入 NVS），当前范围 %s，轮盘 %u 项",

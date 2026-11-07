@@ -24,9 +24,11 @@ CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_DEF_REFR_PERIOD=20
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
-# LVGL 内置 malloc 池（字节）。它是独立静态区、不与系统堆共享；LVGL 9.5 用
-# CONFIG_LV_MEM_SIZE（字节），旧的 CONFIG_LV_MEM_SIZE_KILOBYTES 已废弃。
-# 32KB 足够三屏界面 + 3 行候选词；设太大（默认 64KB）会挤占 Wi-Fi 需要的堆。
+# LVGL 的内存改用 C 库 malloc（走系统堆），不再用 32KB 的内置池。
+# 原因：Tiny TTF 渲染中文字形时每个字形要 1KB 左右，内置池很快被吃干，
+# 触发 stbtt__new_active 的分配失败断言（停止后偶发闪退的根因）。
+CONFIG_LV_USE_CLIB_MALLOC=y
+# CONFIG_LV_USE_BUILTIN_MALLOC is not set
 CONFIG_LV_MEM_SIZE=32768
 
 # --- 运行时中文渲染 ---
@@ -35,7 +37,7 @@ CONFIG_LV_MEM_SIZE=32768
 CONFIG_LV_USE_TINY_TTF=y
 # Tiny TTF 的字形缓存条数。每个 32px 字形约 1KB，缓存 16 个 ≈ 16KB，
 # 正好放进 32KB 的 LVGL 池；之前默认 64 会让池子瞬间耗尽并在旋转时崩溃。
-CONFIG_LV_TINY_TTF_CACHE_GLYPH_CNT=16
+CONFIG_LV_TINY_TTF_CACHE_GLYPH_CNT=8
 CONFIG_LV_TINY_TTF_CACHE_KERNING_CNT=32
 
 # --- 系统 ---
