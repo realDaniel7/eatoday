@@ -162,8 +162,8 @@ static const lv_font_t *name_font(const eat_main_view_t *view, size_t chars) {
     // 自定义条目一律用运行时 TTF（旋转中也一样），这样中文不会变成方块；
     // 崩溃问题已通过“LVGL 改用系统堆 + 开热点前释放字体”解决。
     if (view->is_user) {
-        // 自定义条目来自手机输入，用运行时 TTF，避免静态子集缺字。
-        const lv_font_t *runtime = eat_font_user();
+        // 自定义条目来自手机输入，用运行时 TTF；旋转时换小一号，滚动更跟手。
+        const lv_font_t *runtime = view->spinning ? eat_font_user_spin() : eat_font_user();
         if (runtime != NULL) return runtime;
     }
     return eat_font_for_name(chars);

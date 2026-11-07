@@ -10,6 +10,7 @@ extern const uint8_t noto_sc_ttf_end[] asm("_binary_noto_sc_gb2312_ttf_end");
 static const char *TAG = "eat_fonts";
 
 static lv_font_t *s_user;
+static lv_font_t *s_user_spin;
 static lv_font_t s_ui16;
 static lv_font_t *s_runtime_16;
 static bool s_runtime_failed;
@@ -69,6 +70,15 @@ const lv_font_t *eat_font_user(void) {
 #endif
 }
 
+const lv_font_t *eat_font_user_spin(void) {
+#if LV_USE_TINY_TTF
+    if (s_user_spin == NULL && !s_runtime_failed) s_user_spin = create_runtime_font(24);
+    return s_user_spin;
+#else
+    return NULL;
+#endif
+}
+
 bool eat_fonts_runtime_ready(void) {
 #if LV_USE_TINY_TTF
     return eat_font_user() != NULL;
@@ -87,6 +97,10 @@ void eat_fonts_deinit(void) {
     if (s_user != NULL) {
         lv_tiny_ttf_destroy(s_user);
         s_user = NULL;
+    }
+    if (s_user_spin != NULL) {
+        lv_tiny_ttf_destroy(s_user_spin);
+        s_user_spin = NULL;
     }
 #endif
 }

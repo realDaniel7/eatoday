@@ -9,12 +9,12 @@
 
 #define EAT_WHEEL_MILLI 1000
 
-// 起转速度：22 项/秒。三键小屏上手感约为“看得清在滚，但不至于糊成一片”。
-#define EAT_WHEEL_SPIN_SPEED 22000
+// 起转速度：40 项/秒。要的是“刷刷刷”的滚动手感。
+#define EAT_WHEEL_SPIN_SPEED 40000
 // 减速时间常数（ms）：松开后约 0.6~0.8 秒停稳。
-#define EAT_WHEEL_DECAY_TC_MS 260
+#define EAT_WHEEL_DECAY_TC_MS 210
 // 低于该速度（不足 1 项/秒）直接吸附停止，避免长时间爬行。
-#define EAT_WHEEL_MIN_SPEED 900
+#define EAT_WHEEL_MIN_SPEED 1100
 
 typedef struct {
     uint16_t count;        // 条目数；0 表示空池

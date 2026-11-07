@@ -31,6 +31,8 @@ const lv_font_t *eat_font_ui_16(void);
 // 只保留一个实例：两个尺寸会各自占一份字形缓存，在这台没有 PSRAM 的机器上放不下。
 // 创建失败返回 NULL，调用方应回退到 eat_font_for_name()。
 const lv_font_t *eat_font_user(void);
+// 旋转时用的小一号运行时字体（24px）：字形更小、栅格化更快，滚动才跟得上手。
+const lv_font_t *eat_font_user_spin(void);
 
 // 运行时字体是否可用（后台页/测试用来提示）。
 bool eat_fonts_runtime_ready(void);
