@@ -38,7 +38,9 @@ each spin starts from a random entry so the same place does not keep winning.
    phone warns about it).
 3. Open `http://192.168.4.1` and edit three independent lists: rename them, add or
    delete entries (up to 50 each), pick which one the wheel should use, then tap **Save**.
-4. Hold `DOWN` on the device to leave; the hotspot closes.
+4. Tap **back to cover** on the page to send the device back to its idle screen and
+   close the hotspot, or hold `DOWN` on the device to leave; either way the wheel keeps
+   whatever it was showing, with no white flash.
 
 Anything you type is drawn with a runtime font covering the full GB2312 set, so unusual
 characters show up instead of empty boxes.

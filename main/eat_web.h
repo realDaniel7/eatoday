@@ -18,5 +18,8 @@ typedef void (*eat_web_saved_cb_t)(void *context);
 
 esp_err_t eat_web_start(eat_sets_t *sets, size_t seed_count, eat_web_saved_cb_t on_saved,
                         void *context);
+// 手机端点了“回到封面”后置位，由应用任务轮询取走（返回 true 表示这次消费了请求）。
+bool eat_web_take_reset(void);
+
 esp_err_t eat_web_stop(void);
 bool eat_web_is_running(void);

@@ -19,6 +19,7 @@ static const char *TAG = "eat_web";
 #define EAT_WEB_ITEM_MAX_CHARS 10   // 单个条目最多 10 个字符
 
 static httpd_handle_t s_server;
+static volatile bool s_reset_requested;
 static eat_sets_t *s_sets;
 static size_t s_seed_count;
 static eat_web_saved_cb_t s_on_saved;
@@ -146,6 +147,19 @@ static bool parse_save(const char *json, eat_sets_t *out, char *error, size_t er
     return true;
 }
 
+// 手机端“回到封面”：只置标志，由应用任务在安全点执行。
+static esp_err_t handle_reset(httpd_req_t *req) {
+    s_reset_requested = true;
+    httpd_resp_set_type(req, "application/json; charset=utf-8");
+    return httpd_resp_sendstr(req, "{\"ok\":true}");
+}
+
+bool eat_web_take_reset(void) {
+    if (!s_reset_requested) return false;
+    s_reset_requested = false;
+    return true;
+}
+
 static esp_err_t handle_save(httpd_req_t *req) {
     if (!read_body(req, s_body, sizeof(s_body))) return send_text(req, "内容过大或读取失败");
 
@@ -197,7 +211,11 @@ esp_err_t eat_web_start(eat_sets_t *sets, size_t seed_count, eat_web_saved_cb_t 
     };
     httpd_register_uri_handler(s_server, &index_uri);
     httpd_register_uri_handler(s_server, &state_uri);
+    const httpd_uri_t reset_uri = {
+        .uri = "/api/reset", .method = HTTP_POST, .handler = handle_reset, .user_ctx = NULL,
+    };
     httpd_register_uri_handler(s_server, &save_uri);
+    httpd_register_uri_handler(s_server, &reset_uri);
     httpd_register_err_handler(s_server, HTTPD_404_NOT_FOUND, handle_not_found);
 
     ESP_LOGI(TAG, "HTTP 服务已启动");

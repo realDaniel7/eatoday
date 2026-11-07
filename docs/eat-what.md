@@ -21,7 +21,8 @@ This application replaces the baseline hardware-test menu with its own two scree
 | Main, idle | hold `OK` | open the phone editor (SoftAP + HTTP) |
 | Main, spinning | release `UP` | begin deceleration |
 | Main, spinning | short `DOWN` | stop immediately |
-| Editor | hold `DOWN` | close the hotspot and return |
+| Editor | hold `DOWN` | close the hotspot and return to the previous screen |
+| Phone page | "back to cover" | device returns to the idle screen and closes the hotspot |
 
 There is no on-device typing: lists are edited from a phone. Before the first spin the
 centre card shows the title plus a "hold UP to start" hint, and switching lists does not

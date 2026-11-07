@@ -136,9 +136,8 @@ static void cycle_set(void) {
 }
 
 static void open_web_page(void) {
-    // 开热点前先把运行时字体释放掉：Wi-Fi 协议栈和字形缓存都很吃堆，
-    // 两者同时驻留在这台没有 PSRAM 的机器上会不够用。
-    eat_fonts_deinit();
+    // 字体不在这里释放：退出后台页时重建 1MB 的 TTF 会明显卡一下并闪屏。
+    // 字形缓存只占十几 KB，改用系统堆后和 Wi-Fi 可以共存。
     s_web_status[0] = '\0';
     s_web_ok = eat_wifi_start(&s_wifi_info) == ESP_OK;
     if (s_web_ok) {
@@ -172,11 +171,13 @@ static void close_web_page(void) {
     (void)eat_wifi_stop();
     eat_router_leave_web(&s_router);
     s_page = EAT_PAGE_MAIN;
-    if (bsp_lvgl_lock(200)) {
+    if (bsp_lvgl_lock(300)) {
+        // 先把主界面内容画好再切屏，切换瞬间就是上一次停留的样子，不会闪白。
+        render_main_locked();
         eat_ui_show_main(&s_ui);
         bsp_lvgl_unlock();
     }
-    s_dirty_main = true;
+    s_dirty_main = false;
 }
 
 static void apply_web_changes(void) {
@@ -286,6 +287,16 @@ static void app_task(void *arg) {
         if (s_web_saved) {
             s_web_saved = false;
             apply_web_changes();
+        }
+        if (eat_web_take_reset()) {
+            // 手机上点了“回到封面”：退后台页、回默认池待机态。
+            s_started = false;
+            s_sets.active = -1;
+            s_sets_mirror.active = -1;
+            (void)eat_store_save_meta_only(&s_sets);
+            rebuild_view();
+            eat_wheel_randomize(&s_wheel, esp_random());
+            close_web_page();
         }
 
         const bool was_spinning = eat_wheel_is_spinning(&s_wheel);
